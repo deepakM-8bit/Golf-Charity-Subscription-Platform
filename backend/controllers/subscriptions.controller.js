@@ -31,6 +31,7 @@ const getPayPalToken = async () => {
 export const createOrder = async (req, res) => {
   try {
     const { plan } = req.body;
+    console.log("User in request:", req.user);
 
     if (!["monthly", "yearly"].includes(plan)) {
       return res
@@ -52,8 +53,8 @@ export const createOrder = async (req, res) => {
         purchase_units: [
           {
             amount: {
-              currency_code: planDetails.currency,
-              value: planDetails.amount.toFixed(2),
+              currency_code: "INR",
+              value: String(Math.round(planDetails.amount)),
             },
             description: `GolfGives ${planDetails.label} Subscription`,
             custom_id: `${req.user.id}|${plan}`, // store user + plan for capture
