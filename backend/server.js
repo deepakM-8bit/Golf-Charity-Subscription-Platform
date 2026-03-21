@@ -8,6 +8,7 @@ import charitiesRouter from "./routes/charities.js";
 import drawsRouter from "./routes/draws.js";
 import winnersRouter from "./routes/winners.js";
 import donationsRouter from "./routes/donations.js";
+import adminRouter from "./routes/admin.js";
 
 const app = express();
 
@@ -32,6 +33,12 @@ app.use("/api/charities", charitiesRouter);
 app.use("/api/draws", drawsRouter);
 app.use("/api/winners", winnersRouter);
 app.use("/api/donations", donationsRouter);
+app.use("/api/admin", adminRouter);
+
+// ── 404 handler ──
+app.use((req, res) => {
+  res.status(404).json({ error: `Route ${req.method} ${req.url} not found` });
+});
 
 // ── global error handler ──
 app.use((err, req, res, next) => {
