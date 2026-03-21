@@ -4,6 +4,7 @@ import cors from "cors";
 
 import scoresRouter from "./routes/scores.js";
 import subscriptionsRouter from "./routes/subscriptions.js";
+import charitiesRouter from "./routes/charities.js";
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.get("/health", (req, res) => {
 // ── routes ──
 app.use("/api/scores", scoresRouter);
 app.use("/api/subscriptions", subscriptionsRouter);
+app.use("/api/charities", charitiesRouter);
 
 // ── global error handler ──
 app.use((err, req, res, next) => {
