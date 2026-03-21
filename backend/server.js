@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 
 import scoresRouter from "./routes/scores.js";
+import subscriptionsRouter from "./routes/subscriptions.js";
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.get("/health", (req, res) => {
 
 // ── routes ──
 app.use("/api/scores", scoresRouter);
+app.use("/api/subscriptions", subscriptionsRouter);
 
 // ── global error handler ──
 app.use((err, req, res, next) => {
