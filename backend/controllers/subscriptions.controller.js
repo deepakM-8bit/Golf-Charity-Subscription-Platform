@@ -31,7 +31,7 @@ const getPayPalToken = async () => {
 export const createOrder = async (req, res) => {
   try {
     const { plan } = req.body;
-    console.log("User in request:", req.user);
+    console.log("User in request:", req.user.id);
 
     if (!["monthly", "yearly"].includes(plan)) {
       return res
@@ -53,11 +53,12 @@ export const createOrder = async (req, res) => {
         purchase_units: [
           {
             amount: {
-              currency_code: "INR",
-              value: String(Math.round(planDetails.amount)),
+              currency_code: "USD",
+              value: planDetails.amount.toFixed(2),
             },
             description: `GolfGives ${planDetails.label} Subscription`,
-            custom_id: `${req.user.id}|${plan}`, // store user + plan for capture
+            // Store user + plan so PayPal holds it for us
+            custom_id: `${req.user.id}|${plan}`,
           },
         ],
         application_context: {
@@ -70,14 +71,21 @@ export const createOrder = async (req, res) => {
     });
 
     const data = await resp.json();
+
     if (!resp.ok)
       throw new Error(data.message || "Failed to create PayPal order");
+
+    console.log("Sending PayPal order:", {
+      amount: planDetails.amount,
+      currency: "USD",
+    });
 
     // get approval URL to redirect user
     const approvalUrl = data.links.find((l) => l.rel === "approve")?.href;
 
     res.json({ orderId: data.id, approvalUrl });
   } catch (err) {
+    console.error("Create Order Error:", err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -89,86 +97,151 @@ export const captureOrder = async (req, res) => {
 
     if (!orderId) return res.status(400).json({ error: "orderId is required" });
 
+    // Have we already processed this exact PayPal order?
+    const { data: alreadyProcessed } = await supabase
+      .from("subscriptions")
+      .select("id, paypal_order_id")
+      .eq("paypal_order_id", orderId)
+      .single();
+
+    if (alreadyProcessed) {
+      console.log(
+        `Order ${orderId} already processed. Skipping duplicate email.`,
+      );
+      // Return a safe 200 OK so the frontend doesn't crash, but do nothing else.
+      return res.json({
+        message: "Subscription already activated successfully",
+      });
+    }
+
     const token = await getPayPalToken();
 
-    const resp = await fetch(
-      `${PAYPAL_API}/v2/checkout/orders/${orderId}/capture`,
+    // Fetch the original order details
+    const orderResp = await fetch(
+      `${PAYPAL_API}/v2/checkout/orders/${orderId}`,
       {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
       },
     );
 
-    const data = await resp.json();
-    if (!resp.ok)
-      throw new Error(data.message || "Failed to capture PayPal order");
+    const orderData = await orderResp.json();
+    if (!orderResp.ok) throw new Error("Failed to verify original order");
 
-    if (data.status !== "COMPLETED") {
-      return res.status(400).json({ error: "Payment not completed" });
-    }
-
-    // extract user + plan from custom_id
-    const customId = data.purchase_units[0]?.custom_id || "";
+    const customId = orderData.purchase_units[0]?.custom_id || "";
     const [userId, plan] = customId.split("|");
 
-    if (!userId || !plan) {
-      return res.status(400).json({ error: "Invalid order metadata" });
+    if (!userId || !plan || userId !== req.user.id) {
+      return res
+        .status(400)
+        .json({ error: "Invalid order metadata or user mismatch" });
+    }
+
+    let paymentStatus = orderData.status;
+
+    if (paymentStatus !== "COMPLETED") {
+      const captureResp = await fetch(
+        `${PAYPAL_API}/v2/checkout/orders/${orderId}/capture`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+
+      const captureData = await captureResp.json();
+
+      if (!captureResp.ok) {
+        // If PayPal says the action is semantically incorrect, it means a parallel
+        // request already captured it. Catch it gracefully to keep the terminal clean.
+        const isDuplicateRequest =
+          JSON.stringify(captureData).includes("semantically incorrect") ||
+          JSON.stringify(captureData).includes("ORDER_ALREADY_CAPTURED");
+
+        if (isDuplicateRequest) {
+          console.log("Parallel React capture ignored safely.");
+          return res.json({
+            message: "Capture in progress by another thread.",
+          });
+        }
+
+        throw new Error(
+          captureData.message || "Failed to capture PayPal order",
+        );
+      }
+      paymentStatus = captureData.status;
+    }
+
+    if (paymentStatus !== "COMPLETED") {
+      return res.status(400).json({ error: "Payment not completed" });
     }
 
     const planDetails = PLANS[plan];
     const now = new Date();
     const periodEnd = new Date(now);
 
-    // set period end based on plan
     if (plan === "monthly") {
       periodEnd.setMonth(periodEnd.getMonth() + 1);
     } else {
       periodEnd.setFullYear(periodEnd.getFullYear() + 1);
     }
 
-    // upsert subscription — handles both new and renewal
-    const { data: subscription, error } = await supabase
+    // Check if a subscription already exists for this user
+    const { data: existingSub } = await supabase
       .from("subscriptions")
-      .upsert(
-        {
-          user_id: userId,
-          plan,
-          status: SUBSCRIPTION_STATUS.active,
-          paypal_order_id: data.id,
-          amount_paid: planDetails.amount,
-          current_period_start: now,
-          current_period_end: periodEnd,
-          updated_at: now,
-        },
-        { onConflict: "user_id" },
-      )
-      .select()
+      .select("id")
+      .eq("user_id", req.user.id)
       .single();
 
-    if (error) throw new Error(error.message);
+    const subPayload = {
+      plan,
+      status: SUBSCRIPTION_STATUS.active,
+      paypal_order_id: orderId, // Make sure we save the new Order ID!
+      amount_paid: planDetails.amount,
+      current_period_start: now,
+      current_period_end: periodEnd,
+      updated_at: now,
+    };
 
-    // send confirmation email
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("full_name")
-      .eq("id", userId)
-      .single();
+    let subscription;
 
-    const {
-      data: { user },
-    } = await supabase.auth.admin.getUserById(userId);
+    if (existingSub) {
+      // Update existing subscription (e.g., Renewal or Upgrade)
+      const { data, error } = await supabase
+        .from("subscriptions")
+        .update(subPayload)
+        .eq("id", existingSub.id)
+        .select()
+        .single();
 
-    await sendSubscriptionConfirmation(
-      user.email,
-      profile?.full_name || "Subscriber",
-      planDetails.label,
-    );
+      if (error) throw new Error(`DB Update Error: ${error.message}`);
+      subscription = data;
+    } else {
+      // Insert brand new subscription
+      const { data, error } = await supabase
+        .from("subscriptions")
+        .insert({
+          user_id: req.user.id,
+          ...subPayload,
+        })
+        .select()
+        .single();
+
+      if (error) throw new Error(`DB Insert Error: ${error.message}`);
+      subscription = data;
+    }
+
+    // Send the single, glorious confirmation email
+    const userEmail = req.user.email;
+    const userName = req.user.user_metadata?.full_name || "Subscriber";
+
+    await sendSubscriptionConfirmation(userEmail, userName, planDetails.label);
 
     res.json({ subscription, message: "Subscription activated successfully" });
   } catch (err) {
+    console.error("Capture Order Error:", err.message);
     res.status(500).json({ error: err.message });
   }
 };

@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 import { useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext.jsx";
+import { useAuth } from "../contexts/UseAuth.js";
 import { motion } from "framer-motion";
 import { Check, ArrowRight, X } from "lucide-react";
 import toast from "react-hot-toast";
@@ -13,7 +13,7 @@ const PLANS = [
   {
     id: "monthly",
     label: "Monthly",
-    price: "₹849",
+    price: "$89.00",
     period: "/month",
     description: "Perfect for getting started",
     features: [
@@ -27,7 +27,7 @@ const PLANS = [
   {
     id: "yearly",
     label: "Yearly",
-    price: "₹8,499",
+    price: "$859.00",
     period: "/year",
     description: "Save 17% vs monthly",
     features: [
@@ -47,8 +47,8 @@ export default function Subscribe() {
   const [searchParams] = useSearchParams();
   const cancelled = searchParams.get("cancelled");
 
-  const handleSubscribe = async (plan) => {
-    console.log("Clicked plan:", plan);
+  const handleSubscribe = async (planId) => {
+    console.log("Clicked plan:", planId);
 
     if (!user) {
       toast.error("Please sign in to subscribe");
@@ -56,46 +56,34 @@ export default function Subscribe() {
       return;
     }
 
-    setLoading(plan);
-
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      setLoading(planId);
 
-      console.log("Session:", session);
-
-      if (!session) {
-        toast.error("Session expired. Please login again.");
-        navigate("/auth");
-        return;
-      }
-
+      // error if the session is dead, which this catch block will elegantly handle.
       const res = await api.post("/subscriptions/create-order", {
-        plan,
+        plan: planId,
       });
 
       console.log("API RESPONSE:", res);
 
-      const approvalUrl = res?.approvalUrl;
-
-      console.log("Approval URL:", approvalUrl);
-
-      if (approvalUrl) {
-        window.location.href = approvalUrl;
+      if (res?.approvalUrl) {
+        // Safe redirect to PayPal
+        window.location.href = res.approvalUrl;
       } else {
-        throw new Error("No approval URL received");
+        throw new Error("No approval URL received from server");
       }
     } catch (err) {
       console.error("FULL ERROR:", err);
+      // Clean fallback error message for users
+      const errorMessage = err?.error || err?.message || "Something went wrong";
+      toast.error(errorMessage);
 
-      toast.error(
-        err?.error ||
-          err?.message ||
-          JSON.stringify(err) ||
-          "Something went wrong",
-      );
-
+      // If the error was our session timeout, redirect them to login
+      if (errorMessage.includes("Session expired")) {
+        navigate("/auth");
+      }
+    } finally {
+      // Because we threw an error, this will ALWAYS run now!
       setLoading(null);
     }
   };
@@ -184,7 +172,7 @@ export default function Subscribe() {
 
                 <button
                   onClick={() => handleSubscribe(plan.id)}
-                  disabled={loading !== null}
+                  disabled={loading === plan.id}
                   className={`w-full flex items-center justify-center gap-2 font-bold py-3 rounded-xl transition-all ${
                     plan.popular
                       ? "bg-emerald-500 hover:bg-emerald-400 text-black"

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
-import { useAuth } from "../contexts/AuthContext.jsx";
+import { useAuth } from "../contexts/UseAuth.js";
 import { Eye, EyeOff } from "lucide-react";
 
 export default function Auth() {

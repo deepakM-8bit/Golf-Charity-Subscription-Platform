@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase.js";
-import { AuthContext } from "./AuthContextObject";
+import { supabase, clearSupabaseStorage } from "../lib/supabase.js";
+import { AuthContext } from "./AuthContextObject.js";
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -79,22 +79,29 @@ export const AuthProvider = ({ children }) => {
 
   const signOut = async () => {
     try {
-      console.log("Signing out...");
+      console.log("1. Initiating Signout...");
 
-      const { error } = await supabase.auth.signOut();
+      setUser(null);
+      setProfile(null);
+      setSubscription(null);
 
-      if (error) {
-        console.error("Signout error:", error);
-      }
+      clearSupabaseStorage();
+      console.log("2. Local storage forcefully wiped.");
+
+      const serverSignout = supabase.auth.signOut();
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 2000),
+      );
+      await Promise.race([serverSignout, timeout]);
+      console.log("3. Server signout complete.");
     } catch (err) {
-      console.error("Unexpected error:", err);
+      console.warn(
+        "Server signout skipped (network dead), but local session is gone.",
+      );
+      console.error(err.message);
+    } finally {
+      window.location.replace("/");
     }
-
-    setUser(null);
-    setProfile(null);
-    setSubscription(null);
-
-    window.location.replace("/");
   };
 
   const refreshSubscription = async () => {

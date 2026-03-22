@@ -63,8 +63,8 @@ export const createDonationOrder = async (req, res) => {
         purchase_units: [
           {
             amount: {
-              currency_code: "INR",
-              value: Math.round(parseFloat(amount)).toString(),
+              currency_code: "USD",
+              value: planDetails.amount.toFixed(2),
             },
             description: `Donation to ${charity.name} via GolfGives`,
             custom_id: `${req.user.id}|${charity_id}|${amount}`,

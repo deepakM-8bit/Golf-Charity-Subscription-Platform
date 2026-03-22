@@ -1,19 +1,16 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { Menu, X, LogOut, LayoutDashboard, Shield } from "lucide-react";
-import { useAuth } from "../contexts/AuthContext.jsx";
-import { supabase } from "../lib/supabase.js";
-
-// import toast from "react-hot-toast";
+import { useAuth } from "../contexts/UseAuth.js";
 
 const Navbar = () => {
   const { user, isAdmin, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const handleSignOut = async () => {
-    const { data } = await supabase.auth.getSession();
+  const handleSignOut = async (e) => {
+    if (e) e.preventDefault();
 
-    console.log("Session before logout:", data);
+    console.log("Navbar sign out clicked");
 
     await signOut();
   };

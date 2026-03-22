@@ -23,8 +23,8 @@ export const MATCH_TYPES = [3, 4, 5];
 
 // ── PRD Section 04: Subscription plans ──
 export const PLANS = {
-  monthly: { label: "Monthly", amount: 849.0, currency: "INR" },
-  yearly: { label: "Yearly", amount: 8499.0, currency: "INR" },
+  monthly: { label: "Monthly", amount: 89.0, currency: "USD" },
+  yearly: { label: "Yearly", amount: 859.0, currency: "USD" },
 };
 
 // ── Prize pool contribution per subscriber ──
