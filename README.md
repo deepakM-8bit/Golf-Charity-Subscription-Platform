@@ -193,20 +193,6 @@ winners           → Match results, proof, verification, payout
 
 ---
 
-## 💳 Payment Gateway
-
-**PayPal REST API (Sandbox)**
-
-> Note: Stripe is invite-only in India per RBI regulations.
-> PayPal used as PCI-compliant equivalent per PRD Section 04 — "Stripe or equivalent PCI-compliant provider"
-
-**PayPal Sandbox Test Buyer:**
-
-```
-Email:    sb-7zrvu50083938@personal.example.com
-Password: [available in PayPal developer dashboard]
-```
-
 ---
 
 ## 📧 Email Notifications
@@ -272,7 +258,7 @@ VITE_PAYPAL_CLIENT_ID=
 # Backend
 cd backend
 npm install
-npm run dev    # runs on port 4000
+npm run dev    # runs on port 3000
 
 # Frontend
 cd frontend
