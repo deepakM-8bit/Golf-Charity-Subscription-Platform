@@ -6,7 +6,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [subscription, setSubscription] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // This causes the spinner
 
   const fetchProfile = async (userId) => {
     const { data } = await supabase
@@ -18,45 +18,101 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
-  const fetchSubscription = async () => {
+  const fetchSubscription = async (userId) => {
     try {
-      const { data } = await supabase
+      // This prevents PostgREST from throwing a 500 error if there's any duplicate test rows.
+      const { data, error } = await supabase
         .from("subscriptions")
         .select("*")
-        .eq("user_id", (await supabase.auth.getUser()).data.user?.id)
+        .eq("user_id", userId)
         .eq("status", "active")
-        .single();
-      setSubscription(data || null);
-    } catch {
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error("Supabase query error:", error.message);
+        throw error;
+      }
+
+      // Manually extract the first item from the array
+      setSubscription(data && data.length > 0 ? data[0] : null);
+    } catch (err) {
+      console.error("Subscription fetch completely failed:", err);
       setSubscription(null);
     }
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setUser(session?.user || null);
-      if (session?.user) {
-        await fetchProfile(session.user.id);
-        await fetchSubscription();
+    let mounted = true;
+
+    const initSession = async () => {
+      try {
+        // Timeout Shield. If Supabase hangs, we force it to stop loading after 3 seconds.
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise((resolve) =>
+          setTimeout(() => resolve({ data: { session: null } }), 3000),
+        );
+        const {
+          data: { session },
+        } = await Promise.race([sessionPromise, timeoutPromise]);
+
+        if (mounted) {
+          setUser(session?.user || null);
+          if (session?.user) {
+            await Promise.allSettled([
+              fetchProfile(session.user.id),
+              fetchSubscription(session.user.id),
+            ]);
+          }
+        }
+      } catch (e) {
+        console.warn("Auth initialization bypassed:", e.message);
+      } finally {
+        if (mounted) setLoading(false);
       }
-      setLoading(false);
-    });
+    };
+
+    initSession();
 
     const {
       data: { subscription: authListener },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user || null);
       if (session?.user) {
-        await fetchProfile(session.user.id);
-        await fetchSubscription();
+        fetchProfile(session.user.id);
+        fetchSubscription(session.user.id);
       } else {
         setProfile(null);
         setSubscription(null);
       }
     });
 
-    return () => authListener.unsubscribe();
+    return () => {
+      mounted = false;
+      authListener.unsubscribe();
+    };
   }, []);
+
+  const signOut = async () => {
+    try {
+      setUser(null);
+      setProfile(null);
+      setSubscription(null);
+      clearSupabaseStorage();
+
+      const serverSignout = supabase.auth.signOut();
+      const timeout = new Promise((_, r) => setTimeout(r, 2000));
+      await Promise.race([serverSignout, timeout]);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      window.location.replace("/");
+    }
+  };
+
+  const refreshSubscription = async () => {
+    if (user) await fetchSubscription(user.id);
+  };
 
   const signUp = async (email, password, fullName) => {
     const { data, error } = await supabase.auth.signUp({
@@ -75,37 +131,6 @@ export const AuthProvider = ({ children }) => {
     });
     if (error) throw error;
     return data;
-  };
-
-  const signOut = async () => {
-    try {
-      console.log("1. Initiating Signout...");
-
-      setUser(null);
-      setProfile(null);
-      setSubscription(null);
-
-      clearSupabaseStorage();
-      console.log("2. Local storage forcefully wiped.");
-
-      const serverSignout = supabase.auth.signOut();
-      const timeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 2000),
-      );
-      await Promise.race([serverSignout, timeout]);
-      console.log("3. Server signout complete.");
-    } catch (err) {
-      console.warn(
-        "Server signout skipped (network dead), but local session is gone.",
-      );
-      console.error(err.message);
-    } finally {
-      window.location.replace("/");
-    }
-  };
-
-  const refreshSubscription = async () => {
-    await fetchSubscription();
   };
 
   const isAdmin = profile?.role === "admin";

@@ -40,13 +40,13 @@ export const createDonationOrder = async (req, res) => {
     }
 
     // verify charity exists
-    const { data: charity, error: charityError } = await supabase
+    const { data: charityData, error: charityError } = await supabase
       .from("charities")
       .select("id, name")
       .eq("id", charity_id)
       .single();
 
-    if (charityError || !charity) {
+    if (charityError || !charityData) {
       return res.status(404).json({ error: "Charity not found" });
     }
 
@@ -64,9 +64,9 @@ export const createDonationOrder = async (req, res) => {
           {
             amount: {
               currency_code: "USD",
-              value: planDetails.amount.toFixed(2),
+              value: Number(amount).toFixed(2),
             },
-            description: `Donation to ${charity.name} via GolfGives`,
+            description: `Donation to ${charityData.name} via GolfGives`,
             custom_id: `${req.user.id}|${charity_id}|${amount}`,
           },
         ],
@@ -74,14 +74,14 @@ export const createDonationOrder = async (req, res) => {
           return_url: `${process.env.FRONTEND_URL}/dashboard?donated=true`,
           cancel_url: `${process.env.FRONTEND_URL}/dashboard?donation_cancelled=true`,
           brand_name: "GolfGives",
-          user_action: "DONATE",
+          user_action: "PAY_NOW",
         },
       }),
     });
 
-    const data = await resp.json();
+    const paypalData = await resp.json();
     if (!resp.ok)
-      throw new Error(data.message || "Failed to create donation order");
+      throw new Error(paypalData.message || "Failed to create donation order");
 
     // create pending donation record
     await supabase.from("donations").insert({
@@ -89,12 +89,12 @@ export const createDonationOrder = async (req, res) => {
       charity_id,
       amount: parseFloat(amount),
       note,
-      paypal_order_id: data.id,
+      paypal_order_id: paypalData.id,
       status: "pending",
     });
 
-    const approvalUrl = data.links.find((l) => l.rel === "approve")?.href;
-    res.json({ orderId: data.id, approvalUrl });
+    const approvalUrl = paypalData.links.find((l) => l.rel === "approve")?.href;
+    res.json({ orderId: paypalData.id, approvalUrl });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

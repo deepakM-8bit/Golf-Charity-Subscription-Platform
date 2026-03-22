@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 import { useAuth } from "../contexts/UseAuth.js";
 import { Eye, EyeOff } from "lucide-react";
+import { supabase } from "../lib/supabase.js";
 
 export default function Auth() {
   const [showPassword, setShowPassword] = useState(false);
@@ -19,11 +20,15 @@ export default function Auth() {
     setLoading(true);
     try {
       if (mode === "login") {
-        await signIn(form.email, form.password);
+        const data = await signIn(form.email, form.password);
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", data.user.id)
+          .single();
+
         toast.success("Welcome back!");
-        setTimeout(() => {
-          navigate(isAdmin ? "/admin" : "/dashboard");
-        }, 500);
+        navigate(profileData?.role === "admin" ? "/admin" : "/dashboard");
       } else {
         if (form.password.length < 6) {
           toast.error("Password must be at least 6 characters");

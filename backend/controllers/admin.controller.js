@@ -23,10 +23,8 @@ export const getAnalytics = async (req, res) => {
       supabase
         .from("winners")
         .select("prize_amount, payout_status, verification_status"),
-      supabase
-        .from("donations")
-        .select("amount, status")
-        .eq("status", "completed"),
+      supabase.from("donations").select("amount, status"),
+      // .eq("status", "completed"),
     ]);
 
     const totalPrizePool =

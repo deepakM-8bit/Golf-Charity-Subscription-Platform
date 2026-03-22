@@ -97,18 +97,15 @@ export const captureOrder = async (req, res) => {
 
     if (!orderId) return res.status(400).json({ error: "orderId is required" });
 
-    // Have we already processed this exact PayPal order?
+    // .maybeSingle() so new orders don't crash on 0 rows!
     const { data: alreadyProcessed } = await supabase
       .from("subscriptions")
       .select("id, paypal_order_id")
       .eq("paypal_order_id", orderId)
-      .single();
+      .maybeSingle();
 
     if (alreadyProcessed) {
-      console.log(
-        `Order ${orderId} already processed. Skipping duplicate email.`,
-      );
-      // Return a safe 200 OK so the frontend doesn't crash, but do nothing else.
+      console.log(`Order ${orderId} already processed. Skipping duplicate.`);
       return res.json({
         message: "Subscription already activated successfully",
       });
@@ -116,7 +113,6 @@ export const captureOrder = async (req, res) => {
 
     const token = await getPayPalToken();
 
-    // Fetch the original order details
     const orderResp = await fetch(
       `${PAYPAL_API}/v2/checkout/orders/${orderId}`,
       {
@@ -154,8 +150,6 @@ export const captureOrder = async (req, res) => {
       const captureData = await captureResp.json();
 
       if (!captureResp.ok) {
-        // If PayPal says the action is semantically incorrect, it means a parallel
-        // request already captured it. Catch it gracefully to keep the terminal clean.
         const isDuplicateRequest =
           JSON.stringify(captureData).includes("semantically incorrect") ||
           JSON.stringify(captureData).includes("ORDER_ALREADY_CAPTURED");
@@ -166,7 +160,6 @@ export const captureOrder = async (req, res) => {
             message: "Capture in progress by another thread.",
           });
         }
-
         throw new Error(
           captureData.message || "Failed to capture PayPal order",
         );
@@ -188,17 +181,22 @@ export const captureOrder = async (req, res) => {
       periodEnd.setFullYear(periodEnd.getFullYear() + 1);
     }
 
-    // Check if a subscription already exists for this user
-    const { data: existingSub } = await supabase
+    // limit(1) and ORDER BY so it doesn't crash on multiple old subscriptions!
+    // This grabs the exact subscription the Admin just cancelled and overwrites it.
+    const { data: existingSubs } = await supabase
       .from("subscriptions")
       .select("id")
       .eq("user_id", req.user.id)
-      .single();
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const existingSub =
+      existingSubs && existingSubs.length > 0 ? existingSubs[0] : null;
 
     const subPayload = {
       plan,
       status: SUBSCRIPTION_STATUS.active,
-      paypal_order_id: orderId, // Make sure we save the new Order ID!
+      paypal_order_id: orderId,
       amount_paid: planDetails.amount,
       current_period_start: now,
       current_period_end: periodEnd,
@@ -208,7 +206,7 @@ export const captureOrder = async (req, res) => {
     let subscription;
 
     if (existingSub) {
-      // Update existing subscription (e.g., Renewal or Upgrade)
+      // Update existing/cancelled subscription
       const { data, error } = await supabase
         .from("subscriptions")
         .update(subPayload)
@@ -233,11 +231,18 @@ export const captureOrder = async (req, res) => {
       subscription = data;
     }
 
-    // Send the single, glorious confirmation email
     const userEmail = req.user.email;
     const userName = req.user.user_metadata?.full_name || "Subscriber";
 
-    await sendSubscriptionConfirmation(userEmail, userName, planDetails.label);
+    try {
+      await sendSubscriptionConfirmation(
+        userEmail,
+        userName,
+        planDetails.label,
+      );
+    } catch (emailErr) {
+      console.error("Email failed, but sub succeeded:", emailErr);
+    }
 
     res.json({ subscription, message: "Subscription activated successfully" });
   } catch (err) {

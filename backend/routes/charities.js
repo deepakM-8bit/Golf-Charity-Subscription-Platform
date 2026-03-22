@@ -29,11 +29,12 @@ const upload = multer({
 
 // ── public routes ──
 router.get("/", getCharities);
-router.get("/:id", getCharity);
 
 // ── user routes — auth required ──
 router.get("/user/selection", requireAuth, getUserCharity);
 router.post("/user/selection", requireAuth, setUserCharity);
+
+router.get("/:id", getCharity);
 
 // ── admin routes ──
 router.post(

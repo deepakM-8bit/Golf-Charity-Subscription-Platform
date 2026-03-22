@@ -334,6 +334,30 @@ export const publishDraw = async (req, res) => {
   }
 };
 
+// Delete the draws
+export const deleteDraw = async (req, res) => {
+  try {
+    const { data: draw } = await supabase
+      .from("draws")
+      .select("status")
+      .eq("id", req.params.id)
+      .single();
+
+    if (!draw) return res.status(404).json({ error: "Draw not found" });
+
+    if (draw.status === "published") {
+      return res.status(400).json({ error: "Cannot delete a published draw" });
+    }
+
+    await supabase.from("draw_entries").delete().eq("draw_id", req.params.id);
+    await supabase.from("draws").delete().eq("id", req.params.id);
+
+    res.json({ message: "Draw deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete draw" });
+  }
+};
+
 // ── get user draw entries ──
 export const getUserEntries = async (req, res) => {
   try {
