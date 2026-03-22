@@ -34,8 +34,10 @@ Password: Test@123456
 
 ### Test Buyer Account (use this to make payments)
 
+```
 Email: sb-7zrvu50083938@personal.example.com
 Password: X[69Bc=k
+```
 
 ### Test Flow
 
