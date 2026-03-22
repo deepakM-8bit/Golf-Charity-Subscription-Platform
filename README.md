@@ -7,10 +7,10 @@
 
 ## 🌐 Live Links
 
-| Service  | URL                               |
-| -------- | --------------------------------- |
-| Frontend | _Add Vercel URL after deployment_ |
-| Backend  | _Add Render URL after deployment_ |
+| Service  | URL                                                          |
+| -------- | ------------------------------------------------------------ |
+| Frontend | https:/golf-charity-subscription-platform-opal.vercel.app    |
+| Backend  | https://golf-charity-subscription-platform-ocv0.onrender.com |
 
 ---
 
