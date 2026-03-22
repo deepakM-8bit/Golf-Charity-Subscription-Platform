@@ -1,7 +1,7 @@
 # GolfGives — Golf Charity Subscription Platform
 
 > Built for Digital Heroes Full Stack Developer Selection Process
-> Developed by: Deepak (Ace) | BCA Graduate 2025
+> Developed by: Deepak | Full stack developer 
 
 ---
 
