@@ -9,7 +9,7 @@
 
 | Service  | URL                                                          |
 | -------- | ------------------------------------------------------------ |
-| Frontend | https:/golf-charity-subscription-platform-opal.vercel.app    |
+| Frontend | https://golf-charity-subscription-platform-opal.vercel.app    |
 | Backend  | https://golf-charity-subscription-platform-ocv0.onrender.com |
 
 ---
